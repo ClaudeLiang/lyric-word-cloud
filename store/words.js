@@ -1,21 +1,24 @@
 const request = require('request')
 const cheerio = require('cheerio')
+const nodejieba = require("nodejieba");
 const BASE_URL = 'https://www.90lrc.cn'
-const MAIN_URL = '/geshou/100360.html'
+// const MAIN_URL = '/geshou/100360.html'
+const MAIN_URL = '/geshou/101009.html'
 
 class WordsStore {
     constructor() {
-        this.prepareData()
+        this.lyrics = ''
+        this.words = []
+        this.prepareData().catch(err => {
+            console.error(err)
+        })
     }
 
     async prepareData() {
-        // const data = await this.getData(MAIN_URL)
-        // console.log(data)
-        // await this.parse(data)
-        const lyric = await this.getData('/geci/105537.html')
-        const $$ = cheerio.load(lyric)
-        const text = $$('#txt').text()
-        console.log(text)
+        const data = await this.getData(MAIN_URL)
+        await this.parse(data)
+        this.words = await this.cutWords()
+        console.log('prepare finish')
     }
 
     async getData(url) {
@@ -41,14 +44,37 @@ class WordsStore {
 
     async parse(data) {
         const $ = cheerio.load(data)
-        $('li>a').each(async (idx, elm) => {
+        const parr = []
+        $('li>a').each((idx, elm) => {
             const songUrl = $(elm).attr('href')
-            console.log(songUrl)
-            const lyric = await this.getData(songUrl)
-            const $$ = cheerio.load(lyric)
-            const text = $$('txt').text()
-            console.log(text)
+            if (songUrl.indexOf('geci') === -1) {
+                return
+            }
+            parr.push(this.getData(songUrl).then(lyric => {
+                const $$ = cheerio.load(lyric)
+                const text = $$('#txt').text()
+                return Promise.resolve(text)
+            }))
         })
+        console.log(parr.length)
+        ;(await Promise.all(parr)).map(text => {
+            console.log(text)
+            this.lyrics += text
+        })
+    }
+
+    async cutWords() {
+        const result = nodejieba.extract(this.lyrics, 500)
+        return result.map(e => {
+            return {
+                name: e.word,
+                value: e.weight * 1000
+            }
+        })
+    }
+
+    async getWords() {
+        return this.words
     }
 }
 
